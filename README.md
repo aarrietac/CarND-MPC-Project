@@ -1,6 +1,99 @@
 # CarND-Controls-MPC
 Self-Driving Car Engineer Nanodegree Program
 
+## Rubric
+
+### The model
+
+#### Kinematic vehicle model
+This model is used to describe the kinematics of the vehicle. In this project,
+this model is used to analyse the lateral and yaw vehicle kinematics. The main
+states are the x-position, y-position, velocity and yaw-orientation. This states are
+related to the center of mass of the planar vehicle model. The velocity is assumed
+to be collinear to the vehicle's x-axis (pointing forward to the vehicle). Take it
+into consideration, the update equations for the position and yaw orientation are obtained via
+
+```
+x(k+1) = x(k) + v(k) * cos(psi(k)) * dt;
+y(k+1) = y(k) + v(k) * sin(psi(k)) * dt;
+psi(k+1) = psi(k) + v(k) * delta(k) / Lf * dt;
+```
+
+#### Actuators
+The actuator or control signals are the steering wheel angle and the throttle pedal.
+The throttle pedal can be positive (for acceleration - full acceleration +1) or
+negative (for braking - full braking -1). In this project, and for passenger cars,
+we can limit the steering wheel angle to [-25 deg, +25 deg]. These are the variables
+that the MPC will optimize and then apply to the vehicle kinematic model.
+
+
+### Timestep Lenght & Elapsed duration
+This values are the hyper-parameters of the MPC system developed for this project.
+Theses hyper-parameters define the MPC horizon, i.e. how far in time the controller will
+analyse and optimize in order to find the optimum value of the control's signals (steering wheel
+angle and throttle pedal).
+
+To tune these parameters, it is important to know the factible horizon for our MPC implementation.
+This factible horizon depends mainly on the local power computation. In addition, a reasonable Elapsed duration should be proper chosen. To small values will be more computationally expensive and too large value
+will decrese the MPC performance.
+
+#### Trade-off
+Taking into consideration the above, a value of N = 15 and DT = 0.1 was chosen and tested successfully.
+
+### Polynomial Fitting and MPC Preprocessing
+To obtain the polynomial coefficients, a set of points is required. At the beginning,
+the vehicle's position, orientation and the waypoints are measured on the earth-fixed axis system of Unity.
+In order to create a proper polynomial function, these set of points should be rotated to the
+vehicle yaw orientation, this operation is done using the following transformation
+
+```
+  // rotation matrix from F to 0
+  Eigen::MatrixXd A0F(2, 2);
+  A0F << cos(-psi), -sin(-psi),
+         sin(-psi), cos(-psi);
+
+  // position vector for front vehicle point to polygonal points
+  Eigen::VectorXd vec_pos0(2);  // in earth-fixed system
+
+  // Need Eigen vectors for polyfit
+  Eigen::VectorXd ptsx_car(ptsx.size());
+  Eigen::VectorXd ptsy_car(ptsy.size());
+
+  // rotate the position vector into the vehicle-fixed axis system
+  for (size_t i = 0; i < ptsx.size(); i++){
+    vec_pos0 << ptsx[i] - px, ptsy[i] - py;
+    vec_pos0 = A0F*vec_pos0;
+    ptsx_car[i] = vec_pos0(0);
+    ptsy_car[i] = vec_pos0(1);
+  }
+```
+Finally, the vectors ```ptsx``` and ```ptsy``` are employed to obtain the coefficients necessary to
+compute the desired states values (cross-track error - CTE and yaw angle - EPSI).
+
+### Model Predictive Control with Latency and Weights
+At the beginning, with zero latency, the vehicle successfully make the lap with good perfomance.
+If we add the required latency, i.e. 100ms, the vehicle also performed a good lap, but some time
+a huge rate of the steering wheel angle is visualized. The weights for the cost function were calculated
+taking into consideration the followings consideration:
+
+* Small cross-track error (REF_CTE = 0.0)
+* Small orientation error (REF_EPSI = 0.0)
+* Good vehicle velocity tracking (REF_V = 60 mph)
+* Smooth steering angle and acceleration transitions.
+
+The weights used in this project were set as follows:
+
+```
+  // weights parameters for the cos function
+  #define W_CTE 700.0
+  #define W_EPSI 4000.0
+  #define W_VEL 1.0
+  #define W_DELTA 100000.0
+  #define W_A 5.0
+  #define W_DDELTA 20.0
+  #define W_DA 10.0
+  ```
+
 ---
 
 ## Dependencies
@@ -19,7 +112,7 @@ Self-Driving Car Engineer Nanodegree Program
   * Run either `install-mac.sh` or `install-ubuntu.sh`.
   * If you install from source, checkout to commit `e94b6e1`, i.e.
     ```
-    git clone https://github.com/uWebSockets/uWebSockets 
+    git clone https://github.com/uWebSockets/uWebSockets
     cd uWebSockets
     git checkout e94b6e1
     ```
@@ -31,7 +124,7 @@ Self-Driving Car Engineer Nanodegree Program
   * Mac: `brew install ipopt`
   * Linux
     * You will need a version of Ipopt 3.12.1 or higher. The version available through `apt-get` is 3.11.x. If you can get that version to work great but if not there's a script `install_ipopt.sh` that will install Ipopt. You just need to download the source from the Ipopt [releases page](https://www.coin-or.org/download/source/Ipopt/) or the [Github releases](https://github.com/coin-or/Ipopt/releases) page.
-    * Then call `install_ipopt.sh` with the source directory as the first argument, ex: `bash install_ipopt.sh Ipopt-3.12.1`. 
+    * Then call `install_ipopt.sh` with the source directory as the first argument, ex: `bash install_ipopt.sh Ipopt-3.12.1`.
   * Windows: TODO. If you can use the Linux subsystem and follow the Linux instructions.
 * [CppAD](https://www.coin-or.org/CppAD/)
   * Mac: `brew install cppad`
